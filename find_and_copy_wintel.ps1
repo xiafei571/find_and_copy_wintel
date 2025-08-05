@@ -1,30 +1,30 @@
-# 参数设定
-$csvPath = "C:\your_file_list.csv"       # 输入的 CSV 路径
-$searchRoot = "C:\"                      # 要搜索的根目录
-$destinationDir = "C:\CollectedFiles"    # 要复制到的目标目录
+# Parameter settings
+$csvPath = "C:\your_file_list.csv"       # Input CSV file path
+$searchRoot = "C:\"                      # Root directory to search
+$destinationDir = "C:\CollectedFiles"    # Destination directory for copying files
 
-# 支持的文件扩展名
+# Supported file extensions
 $allowedExtensions = @(".csv", ".log", ".xls", ".tsv", ".pdf", ".txt")
 
-# 正则表达式：匹配日期 yyyymmdd 或 yyyymmddhhmmss
+# Regular expression: match date yyyymmdd or yyyymmddhhmmss
 $datePattern = '\d{8}(\d{6})?'
 
-# 读取 CSV 内容
+# Read CSV content
 $lines = Get-Content -Path $csvPath -Encoding UTF8
 $headers = $lines[0]
 $rows = $lines[1..($lines.Length - 1)]
 
-# 创建目标目录（如不存在）
+# Create destination directory (if not exists)
 if (-not (Test-Path $destinationDir)) {
     New-Item -ItemType Directory -Path $destinationDir | Out-Null
 }
 
-# 递归扫描所有文件（仅限允许后缀）
+# Recursively scan all files (limited to allowed extensions)
 Write-Host "📂 Indexing all files under $searchRoot (please wait)..."
 $allFiles = Get-ChildItem -Path $searchRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object { $allowedExtensions -contains $_.Extension.ToLower() }
 
-# 建立 文件名 → 文件对象数组 的映射
+# Build mapping from filename to file object array
 $nameToFilesMap = @{}
 foreach ($file in $allFiles) {
     $key = $file.Name.ToLower()
@@ -35,11 +35,11 @@ foreach ($file in $allFiles) {
 }
 Write-Host "✅ Indexed $($allFiles.Count) files."
 
-# 初始化输出结果
+# Initialize output results
 $output = @()
 $output += "$headers,FullPath,CopyTime"
 
-# 遍历每一行 CSV 文件名
+# Iterate through each CSV row filename
 foreach ($line in $rows) {
     $columns = $line -split ","
     $fileName = $columns[0].Trim()
@@ -47,25 +47,25 @@ foreach ($line in $rows) {
     $fullPath = ""
     $copyTime = ""
 
-    # 仅处理支持后缀
+    # Only process supported extensions
     $ext = [System.IO.Path]::GetExtension($fileName)
     if (-not $allowedExtensions.Contains($ext.ToLower())) {
         $output += "$line,,"
         continue
     }
 
-    # 查找是否存在匹配文件
+    # Check if matching files exist
     if ($nameToFilesMap.ContainsKey($key)) {
         $matchedFiles = $nameToFilesMap[$key]
 
-        # 如果文件名中含日期，则找出“最新”的一个
+        # If filename contains date, find the "latest" one
         if ($fileName -match $datePattern) {
             $targetFile = $matchedFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         } else {
             $targetFile = $matchedFiles[0]
         }
 
-        # 复制到目标路径
+        # Copy to destination path
         $destPath = Join-Path $destinationDir $targetFile.Name
         Copy-Item -Path $targetFile.FullName -Destination $destPath -Force
         $fullPath = $targetFile.FullName
@@ -75,10 +75,10 @@ foreach ($line in $rows) {
         Write-Host "❌ Not found: $fileName"
     }
 
-    # 记录结果
+    # Record results
     $output += "$fileName,""$fullPath"",""$copyTime"""
 }
 
-# 写回 CSV 文件（覆盖原始文件）
+# Write back to CSV file (overwrite original file)
 $output | Set-Content -Path $csvPath -Encoding UTF8
 Write-Host "✅ All done. Updated CSV written to $csvPath"
