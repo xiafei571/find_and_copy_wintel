@@ -26,12 +26,47 @@ $allFiles = Get-ChildItem -Path $searchRoot -Recurse -File -Force -ErrorAction S
 
 # Build mapping from filename to file object array
 $nameToFilesMap = @{}
+$patternToFilesMap = @{}
+
 foreach ($file in $allFiles) {
-    $key = $file.Name.ToLower()
-    if (-not $nameToFilesMap.ContainsKey($key)) {
-        $nameToFilesMap[$key] = @()
+    $fileName = $file.Name.ToLower()
+    
+    # Exact name mapping
+    if (-not $nameToFilesMap.ContainsKey($fileName)) {
+        $nameToFilesMap[$fileName] = @()
     }
-    $nameToFilesMap[$key] += $file
+    $nameToFilesMap[$fileName] += $file
+    
+    # Pattern mapping for files with dates
+    if ($fileName -match '\d{14}') {
+        # Replace 14-digit datetime with pattern
+        $pattern = $fileName -replace '\d{14}', 'yyyymmddhhmmss'
+        if (-not $patternToFilesMap.ContainsKey($pattern)) {
+            $patternToFilesMap[$pattern] = @()
+        }
+        $patternToFilesMap[$pattern] += $file
+        
+        # Also add uppercase pattern
+        $patternUpper = $fileName -replace '\d{14}', 'YYYYMMDDHHMMSS'
+        if (-not $patternToFilesMap.ContainsKey($patternUpper)) {
+            $patternToFilesMap[$patternUpper] = @()
+        }
+        $patternToFilesMap[$patternUpper] += $file
+    } elseif ($fileName -match '\d{8}') {
+        # Replace 8-digit date with pattern
+        $pattern = $fileName -replace '\d{8}', 'yyyymmdd'
+        if (-not $patternToFilesMap.ContainsKey($pattern)) {
+            $patternToFilesMap[$pattern] = @()
+        }
+        $patternToFilesMap[$pattern] += $file
+        
+        # Also add uppercase pattern
+        $patternUpper = $fileName -replace '\d{8}', 'YYYYMMDD'
+        if (-not $patternToFilesMap.ContainsKey($patternUpper)) {
+            $patternToFilesMap[$patternUpper] = @()
+        }
+        $patternToFilesMap[$patternUpper] += $file
+    }
 }
 Write-Host "Indexed $($allFiles.Count) files."
 
@@ -57,18 +92,12 @@ foreach ($line in $rows) {
     # Check if matching files exist
     $matchedFiles = @()
     
-    # If filename contains date pattern, search for files with actual dates
-    if ($fileName -match 'yyyymmddhhmmss|YYYYMMDDHHMMSS') {
-        $pattern = $fileName -replace 'yyyymmddhhmmss|YYYYMMDDHHMMSS', '\d{14}'
-        $matchedFiles = $allFiles | Where-Object { $_.Name -match $pattern }
-    } elseif ($fileName -match 'yyyymmdd|YYYYMMDD') {
-        $pattern = $fileName -replace 'yyyymmdd|YYYYMMDD', '\d{8}'
-        $matchedFiles = $allFiles | Where-Object { $_.Name -match $pattern }
-    } else {
+    # Try pattern matching first (much faster)
+    if ($patternToFilesMap.ContainsKey($key)) {
+        $matchedFiles = $patternToFilesMap[$key]
+    } elseif ($nameToFilesMap.ContainsKey($key)) {
         # Exact match lookup
-        if ($nameToFilesMap.ContainsKey($key)) {
-            $matchedFiles = $nameToFilesMap[$key]
-        }
+        $matchedFiles = $nameToFilesMap[$key]
     }
     
     if ($matchedFiles.Count -gt 0) {
