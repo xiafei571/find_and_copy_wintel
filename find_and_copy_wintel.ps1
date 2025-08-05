@@ -55,11 +55,25 @@ foreach ($line in $rows) {
     }
 
     # Check if matching files exist
-    if ($nameToFilesMap.ContainsKey($key)) {
-        $matchedFiles = $nameToFilesMap[$key]
-
-        # If filename contains date, find the "latest" one
-        if ($fileName -match $datePattern) {
+    $matchedFiles = @()
+    
+    # If filename contains date pattern, search for files with actual dates
+    if ($fileName -match 'yyyymmddhhmmss|YYYYMMDDHHMMSS') {
+        $pattern = $fileName -replace 'yyyymmddhhmmss|YYYYMMDDHHMMSS', '\d{14}'
+        $matchedFiles = $allFiles | Where-Object { $_.Name -match $pattern }
+    } elseif ($fileName -match 'yyyymmdd|YYYYMMDD') {
+        $pattern = $fileName -replace 'yyyymmdd|YYYYMMDD', '\d{8}'
+        $matchedFiles = $allFiles | Where-Object { $_.Name -match $pattern }
+    } else {
+        # Exact match lookup
+        if ($nameToFilesMap.ContainsKey($key)) {
+            $matchedFiles = $nameToFilesMap[$key]
+        }
+    }
+    
+    if ($matchedFiles.Count -gt 0) {
+        # If filename contains date pattern or multiple matches, find the "latest" one
+        if ($fileName -match 'yyyymmdd|YYYYMMDD|yyyymmddhhmmss|YYYYMMDDHHMMSS' -or $matchedFiles.Count -gt 1) {
             $targetFile = $matchedFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         } else {
             $targetFile = $matchedFiles[0]
