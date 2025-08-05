@@ -26,6 +26,12 @@ Write-Host "Reading CSV file to determine search targets..."
 $output = @()
 $output += "$headers,FullPath,CopyTime"
 
+# Initialize counters
+$totalFiles = 0
+$foundFiles = 0
+$copiedFiles = 0
+$notFoundFiles = 0
+
 # Function to search for a specific file
 function Find-FileByPattern {
     param(
@@ -61,6 +67,8 @@ foreach ($line in $rows) {
     $fileName = $columns[0].Trim()
     $fullPath = ""
     $copyTime = ""
+    
+    $totalFiles++
 
     # Only process supported extensions
     $ext = [System.IO.Path]::GetExtension($fileName)
@@ -75,6 +83,8 @@ foreach ($line in $rows) {
     $matchedFiles = Find-FileByPattern -FileName $fileName -SearchRoot $searchRoot -AllowedExtensions $allowedExtensions
     
     if ($matchedFiles.Count -gt 0) {
+        $foundFiles++
+        
         # If multiple matches or date pattern, find the "latest" one
         if ($fileName -match 'yyyymmdd|YYYYMMDD|yyyymmddhhmmss|YYYYMMDDHHMMSS' -or $matchedFiles.Count -gt 1) {
             $targetFile = $matchedFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -87,8 +97,10 @@ foreach ($line in $rows) {
         Copy-Item -Path $targetFile.FullName -Destination $destPath -Force
         $fullPath = $targetFile.FullName
         $copyTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $copiedFiles++
         Write-Host "Copied: $fileName -> $destPath"
     } else {
+        $notFoundFiles++
         Write-Host "Not found: $fileName"
     }
 
@@ -98,4 +110,12 @@ foreach ($line in $rows) {
 
 # Write back to CSV file (overwrite original file)
 $output | Set-Content -Path $csvPath -Encoding UTF8
-Write-Host "All done. Updated CSV written to $csvPath"
+
+# Display summary
+Write-Host ""
+Write-Host "=== SUMMARY ==="
+Write-Host "Total files in CSV: $totalFiles"
+Write-Host "Found files: $foundFiles"
+Write-Host "Successfully copied: $copiedFiles"
+Write-Host "Not found: $notFoundFiles"
+Write-Host "Updated CSV written to: $csvPath"
