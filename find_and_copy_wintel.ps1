@@ -19,66 +19,46 @@ if (-not (Test-Path $destinationDir)) {
     New-Item -ItemType Directory -Path $destinationDir | Out-Null
 }
 
-# Recursively scan all files (limited to allowed extensions)
-Write-Host "Indexing all files under $searchRoot (please wait)..."
-$allFiles = Get-ChildItem -Path $searchRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
-    Where-Object { $allowedExtensions -contains $_.Extension.ToLower() }
-
-# Build mapping from filename to file object array
-$nameToFilesMap = @{}
-$patternToFilesMap = @{}
-
-foreach ($file in $allFiles) {
-    $fileName = $file.Name.ToLower()
-    
-    # Exact name mapping
-    if (-not $nameToFilesMap.ContainsKey($fileName)) {
-        $nameToFilesMap[$fileName] = @()
-    }
-    $nameToFilesMap[$fileName] += $file
-    
-    # Pattern mapping for files with dates
-    if ($fileName -match '\d{14}') {
-        # Replace 14-digit datetime with pattern
-        $pattern = $fileName -replace '\d{14}', 'yyyymmddhhmmss'
-        if (-not $patternToFilesMap.ContainsKey($pattern)) {
-            $patternToFilesMap[$pattern] = @()
-        }
-        $patternToFilesMap[$pattern] += $file
-        
-        # Also add uppercase pattern
-        $patternUpper = $fileName -replace '\d{14}', 'YYYYMMDDHHMMSS'
-        if (-not $patternToFilesMap.ContainsKey($patternUpper)) {
-            $patternToFilesMap[$patternUpper] = @()
-        }
-        $patternToFilesMap[$patternUpper] += $file
-    } elseif ($fileName -match '\d{8}') {
-        # Replace 8-digit date with pattern
-        $pattern = $fileName -replace '\d{8}', 'yyyymmdd'
-        if (-not $patternToFilesMap.ContainsKey($pattern)) {
-            $patternToFilesMap[$pattern] = @()
-        }
-        $patternToFilesMap[$pattern] += $file
-        
-        # Also add uppercase pattern
-        $patternUpper = $fileName -replace '\d{8}', 'YYYYMMDD'
-        if (-not $patternToFilesMap.ContainsKey($patternUpper)) {
-            $patternToFilesMap[$patternUpper] = @()
-        }
-        $patternToFilesMap[$patternUpper] += $file
-    }
-}
-Write-Host "Indexed $($allFiles.Count) files."
+# Read CSV first to get the list of files we need to find
+Write-Host "Reading CSV file to determine search targets..."
 
 # Initialize output results
 $output = @()
 $output += "$headers,FullPath,CopyTime"
 
+# Function to search for a specific file
+function Find-FileByPattern {
+    param(
+        [string]$FileName,
+        [string]$SearchRoot,
+        [array]$AllowedExtensions
+    )
+    
+    if ($FileName -match 'yyyymmddhhmmss|YYYYMMDDHHMMSS') {
+        # Search for files with 14-digit datetime pattern
+        $searchPattern = $FileName -replace 'yyyymmddhhmmss|YYYYMMDDHHMMSS', '*'
+        $regexPattern = $FileName -replace 'yyyymmddhhmmss|YYYYMMDDHHMMSS', '\d{14}'
+    } elseif ($FileName -match 'yyyymmdd|YYYYMMDD') {
+        # Search for files with 8-digit date pattern
+        $searchPattern = $FileName -replace 'yyyymmdd|YYYYMMDD', '*'
+        $regexPattern = $FileName -replace 'yyyymmdd|YYYYMMDD', '\d{8}'
+    } else {
+        # Exact filename search
+        return Get-ChildItem -Path $SearchRoot -Filter $FileName -Recurse -File -Force -ErrorAction SilentlyContinue
+    }
+    
+    # Search with wildcard pattern and filter by regex
+    return Get-ChildItem -Path $SearchRoot -Filter $searchPattern -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { 
+            $AllowedExtensions -contains $_.Extension.ToLower() -and
+            $_.Name -match $regexPattern
+        }
+}
+
 # Iterate through each CSV row filename
 foreach ($line in $rows) {
     $columns = $line -split ","
     $fileName = $columns[0].Trim()
-    $key = $fileName.ToLower()
     $fullPath = ""
     $copyTime = ""
 
@@ -89,19 +69,13 @@ foreach ($line in $rows) {
         continue
     }
 
-    # Check if matching files exist
-    $matchedFiles = @()
+    Write-Host "Searching for: $fileName"
     
-    # Try pattern matching first (much faster)
-    if ($patternToFilesMap.ContainsKey($key)) {
-        $matchedFiles = $patternToFilesMap[$key]
-    } elseif ($nameToFilesMap.ContainsKey($key)) {
-        # Exact match lookup
-        $matchedFiles = $nameToFilesMap[$key]
-    }
+    # Search for this specific file
+    $matchedFiles = Find-FileByPattern -FileName $fileName -SearchRoot $searchRoot -AllowedExtensions $allowedExtensions
     
     if ($matchedFiles.Count -gt 0) {
-        # If filename contains date pattern or multiple matches, find the "latest" one
+        # If multiple matches or date pattern, find the "latest" one
         if ($fileName -match 'yyyymmdd|YYYYMMDD|yyyymmddhhmmss|YYYYMMDDHHMMSS' -or $matchedFiles.Count -gt 1) {
             $targetFile = $matchedFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         } else {
