@@ -20,7 +20,7 @@ if (-not (Test-Path $destinationDir)) {
 }
 
 # Recursively scan all files (limited to allowed extensions)
-Write-Host "📂 Indexing all files under $searchRoot (please wait)..."
+Write-Host "Indexing all files under $searchRoot (please wait)..."
 $allFiles = Get-ChildItem -Path $searchRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object { $allowedExtensions -contains $_.Extension.ToLower() }
 
@@ -33,7 +33,7 @@ foreach ($file in $allFiles) {
     }
     $nameToFilesMap[$key] += $file
 }
-Write-Host "✅ Indexed $($allFiles.Count) files."
+Write-Host "Indexed $($allFiles.Count) files."
 
 # Initialize output results
 $output = @()
@@ -84,9 +84,9 @@ foreach ($line in $rows) {
         Copy-Item -Path $targetFile.FullName -Destination $destPath -Force
         $fullPath = $targetFile.FullName
         $copyTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        Write-Host "📁 Copied: $fileName -> $destPath"
+        Write-Host "Copied: $fileName -> $destPath"
     } else {
-        Write-Host "❌ Not found: $fileName"
+        Write-Host "Not found: $fileName"
     }
 
     # Record results
@@ -95,4 +95,4 @@ foreach ($line in $rows) {
 
 # Write back to CSV file (overwrite original file)
 $output | Set-Content -Path $csvPath -Encoding UTF8
-Write-Host "✅ All done. Updated CSV written to $csvPath"
+Write-Host "All done. Updated CSV written to $csvPath"
